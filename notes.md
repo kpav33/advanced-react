@@ -35,3 +35,57 @@
 - We can use the pattern known as "moving state down" to prevent unnecessary re-renders in big apps.
 - State update in a hook will trigger the re-render of a component that uses this hook, even if the state itself is not used.
 - In the case of hooks using other hooks, any state update within that chain of hooks will trigger the re-render of a component that uses the very first hook.
+
+# Chapter 2 – Understanding Elements, Components, and Re-renders
+
+- We can **pass components as props** to other components to render them. This approach allows these components to **avoid re-rendering** during state updates, as they are treated as static props. This pattern is commonly used when rendering children in React.
+
+- **Components** are JavaScript functions that return React **Elements**, which React then converts into actual DOM elements.
+
+- A **React Element** is a plain object that represents a part of the UI. The familiar JSX syntax (`<div>` or `<MyComponent />`) is just syntactic sugar for `React.createElement(...)`. Elements can represent either DOM nodes (like `div`) or custom components.
+
+- During a re-render, React calls the component functions again. Based on the returned values, it constructs a **Virtual DOM tree**, also known as the **Fiber Tree**. In fact, React creates **two trees**:
+
+  - One representing the UI **before** the update.
+  - One representing the UI **after** the update.
+
+  React compares these two trees using a process called the **Reconciliation Algorithm** (or diffing), to determine the minimal set of changes required in the real DOM.
+
+- If the element object before and after the update is **exactly the same**, React will **skip re-rendering** the corresponding component and its children. “Exactly the same” is defined by using `Object.is(oldElement, newElement)`. React does **not** perform deep comparisons of objects.
+
+- React supports **nesting composition** using the `children` prop. This pattern mirrors HTML nesting and improves code readability. Passing elements via `children` has the same re-rendering behavior and performance benefits as passing them via regular props.
+
+---
+
+## Key Takeaways
+
+- A Component is just a function that accepts an argument (props)  
+  and returns Elements that should be rendered when this  
+  Component renders on the screen.  
+  `const A = () => <B />` is a Component.
+
+- An Element is an object that describes what needs to be rendered  
+  on the screen, with the type either a string for DOM elements or a  
+  reference to a Component for components.  
+  `const b = <B />` is an Element.
+
+- Re-render is just React calling the Component's function.
+
+- A component re-renders when its element object changes, as  
+  determined by `Object.is` comparison of it before and after re-render.
+
+- When elements are passed as props to a component, and this  
+  component triggers a re-render through a state update, elements  
+  that are passed as props won't re-render.
+
+- `children` are just props and behave like any other prop when  
+  they are passed via JSX nesting syntax:
+
+  ```jsx
+  <Parent>
+    <Child />
+  </Parent>
+
+  // is the same as:
+  <Parent children={<Child />} />
+  ```
