@@ -59,27 +59,19 @@
 
 ## Key Takeaways
 
-- A Component is just a function that accepts an argument (props)  
-  and returns Elements that should be rendered when this  
-  Component renders on the screen.  
+- A Component is just a function that accepts an argument (props) and returns Elements that should be rendered when this Component renders on the screen.
   `const A = () => <B />` is a Component.
 
-- An Element is an object that describes what needs to be rendered  
-  on the screen, with the type either a string for DOM elements or a  
-  reference to a Component for components.  
+- An Element is an object that describes what needs to be rendered on the screen, with the type either a string for DOM elements or a reference to a Component for components.
   `const b = <B />` is an Element.
 
 - Re-render is just React calling the Component's function.
 
-- A component re-renders when its element object changes, as  
-  determined by `Object.is` comparison of it before and after re-render.
+- A component re-renders when its element object changes, as determined by `Object.is` comparison of it before and after re-render.
 
-- When elements are passed as props to a component, and this  
-  component triggers a re-render through a state update, elements  
-  that are passed as props won't re-render.
+- When elements are passed as props to a component, and this component triggers a re-render through a state update, elements that are passed as props won't re-render.
 
-- `children` are just props and behave like any other prop when  
-  they are passed via JSX nesting syntax:
+- `children` are just props and behave like any other prop when they are passed via JSX nesting syntax:
 
   ```jsx
   <Parent>
@@ -89,3 +81,51 @@
   // is the same as:
   <Parent children={<Child />} />
   ```
+
+# Chapter 3 - Configuration concerns with elements as props
+
+- We can pass **React elements as props** to components to allow greater customization. Instead of exposing multiple props for styling and configuration, we delegate control to the consumer by letting them pass fully defined elements.
+
+- Using the **element-as-prop pattern**, you signal to the consumer:  
+  _“I'm responsible for placing this element in the layout, but you control its implementation.”_
+
+- When conditionally rendering components, you may still declare their element props beforehand. This **does not cause a performance hit**—from React’s perspective, elements are lightweight objects in memory. They are only rendered if actually returned by a component during rendering.
+
+- You can use the `React.cloneElement` function to **clone an element and assign new props** to it. This allows you to apply default configuration while still enabling the consumer to customize the element.
+
+---
+
+## Key Takeaways
+
+- When a component renders another component, the configuration of which is controlled by props, we can pass the entire component element as a prop instead, leaving the configuration concerns to the consumer.
+
+  ```jsx
+  const Button = ({ icon }) => {
+    return <button>Submit {icon}</button>;
+  };
+
+  // large red Error icon
+  <Button icon={<Error color="red" size="large" />} />;
+  ```
+
+- If a component that has elements as props is rendered
+  conditionally, then even if those elements are created outside of
+  the condition, they will only be rendered when the conditional
+  component is rendered.
+
+  ```jsx
+  const App = () => {
+    // footer will be rendered only when the dialog itself renders
+    // after isDialogOpen is set to "true"
+    const footer = <Footer />;
+    return isDialogOpen ? <ModalDialog footer={footer} /> : null;
+  };
+  ```
+
+- If we need to provide default props to the element from props, we
+  can use the `cloneElement` function for that.
+
+- This pattern, however, is very fragile. It's too easy to make a
+  mistake there, so use it only for very simple cases.
+
+# Chapter 4 - Advanced configuration with render props
