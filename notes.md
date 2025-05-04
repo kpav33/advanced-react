@@ -129,3 +129,51 @@
   mistake there, so use it only for very simple cases.
 
 # Chapter 4 - Advanced configuration with render props
+
+- A **render prop** is simply a function that returns a React **Element**. It’s similar to a component, but unlike components (which are called by React), **you call render functions directly** in your code.
+
+- With render props, there’s no need to use `React.cloneElement`. Instead, you can pass an object to the render function and **spread its properties as props** inside the returned element.
+
+- This pattern also allows for **state sharing**, since you can include state values in the object passed to the render function and apply them directly.
+
+- One common approach is to use `children` as a function — often referred to as the **children-as-a-function** or **render props via children** pattern. This enables state sharing between components, but it can lead to **performance issues**, as every state change **triggers a re-render** of everything within the function.
+
+- While this pattern was once common, today **hooks have replaced most use cases for render props**. You'll mainly encounter render props in **older codebases** or **specific scenarios** that require tightly controlled rendering or state-sharing logic.
+
+---
+
+## Key Takeaways
+
+- If a component that has elements as props wants to have control  
+   over the props of those elements or pass state to them, you'll need  
+   to convert those elements into **render props**.
+
+  ```jsx
+  const Button = ({ renderIcon }) => {
+    const [someState, setSomeState] = useState()
+    const someProps = { ... };
+    return <button>Submit {renderIcon(someProps, someState)}
+  </button>;
+  };
+
+  <Button renderIcon={(props, state) => <IconComponent {...props}
+  someProps={state} /> } />
+  ```
+
+- `children` can also be used as **render props**, even with JSX  
+   nesting syntax.
+
+  ```jsx
+  const Parent = ({ children }) => {
+    return children(somedata);
+  };
+  ```
+
+- **Render props** were once the go-to pattern for sharing stateful  
+  logic between components **without lifting state up**.
+
+- But **hooks have replaced render props** in 99% of use cases.
+
+- Render props can still be useful today for **specific cases**,  
+  especially when stateful logic needs to be attached directly to  
+  a DOM element.
