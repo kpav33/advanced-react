@@ -177,3 +177,75 @@
 - Render props can still be useful today for **specific cases**,  
   especially when stateful logic needs to be attached directly to  
   a DOM element.
+
+# Chapter 5 – Memoization with useMemo, useCallback, and React.memo
+
+- In JavaScript, **primitive values** (like strings, numbers, booleans) are compared by their **value**, while **objects** (including arrays and functions) are compared by their **reference**.
+
+- When you create an object in JavaScript, the variable holds a reference to the memory location, not the actual object. So two objects with the same contents are still **not equal** unless they reference the same object in memory.
+
+- React faces this challenge during **re-renders**. For instance, if you pass a freshly created `submit` function to a dependency array in a `useEffect`, the effect will **re-run on every render**, because the function reference is always new.
+
+- To solve this, we use **memoization hooks** like `useMemo` and `useCallback` to preserve references between renders.
+
+- `useCallback` is used to memoize **functions**. If the dependencies don’t change, the same function reference is returned between renders.
+
+- `useMemo` is used to memoize **values**. You pass a function to `useMemo`, and it **returns the result** of that function. This is helpful for caching expensive computations.
+
+- `useCallback(fn, deps)` is functionally equivalent to `useMemo(() => fn, deps)`.
+
+- **Important distinction**: Neither `useCallback` nor `useMemo` **prevents** the function or value from being recreated if dependencies change.
+
+- **Memoizing props** doesn't prevent a component from re-rendering unless:
+
+  - The component is wrapped in `React.memo`.
+  - The prop is used in another hook's dependency array that relies on stable references.
+
+- `React.memo` is a higher-order component used to **memoize a component**. If the component’s parent re-renders, React will **only re-render this component if its props have changed**.
+
+- For `React.memo` to work effectively:
+
+  - The component's props need to be stable — which often requires memoizing them using `useMemo` or `useCallback`.
+  - Avoid spreading props from parent components or custom hooks.
+  - Avoid passing non-primitive values (like arrays, objects, or functions) unless they're memoized.
+
+- If you're using `React.memo` with the **children prop**, remember that `children` is a **non-primitive value** and also needs to be memoized.
+
+- While `useMemo` is often used for "expensive" calculations, be cautious:
+
+  - Define what “expensive” means in your context.
+  - Use **profiling tools** to measure performance impact.
+  - Avoid overusing `useMemo` — excessive caching can **slow down initial renders** and add complexity.
+
+- `useMemo` does **nothing** unless the component **actually re-renders**. On first render, React must still execute and **cache** the result, which uses some CPU and memory.
+
+---
+
+## Key Takeaways
+
+- Does all of this mean we shouldn't use memoization? **Not at all.**  
+  It can be a very valuable tool in our performance battle. But considering so many caveats and complexities that surround it, I would recommend using **composition-based optimization techniques first**.  
+  `React.memo` should be the **last resort** when all other things have failed.
+
+- Remember:
+
+  - React compares **objects/arrays/functions by their reference**, not their value.  
+    That comparison happens in **hooks' dependencies** and in **props** of components wrapped in `React.memo`.
+
+  - The **inline function** passed as an argument to either `useMemo` or `useCallback` will be **re-created on every re-render**.
+
+    - `useCallback` memoizes that function itself.
+    - `useMemo` memoizes the result of the function’s execution.
+
+  - **Memoizing props on a component makes sense only when**:
+
+    - The component is wrapped in `React.memo`.
+    - The component uses those props as **dependencies** in any of its hooks.
+    - The component **passes those props down** to other components, and those components meet either of the above conditions.
+
+  - If a component is wrapped in `React.memo` and its re-render is triggered by its parent, then React will **not re-render** this component if its **props haven't changed**. In any other case, re-render will proceed as usual.
+
+  - Memoizing **all props** on a component wrapped in `React.memo` is **harder than it seems**.  
+    Avoid passing non-primitive values that are **coming from other props or hooks**.
+
+  - When memoizing props, **remember that `children` is also a non-primitive** value that needs to be memoized.
