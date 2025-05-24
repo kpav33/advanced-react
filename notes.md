@@ -249,3 +249,66 @@
     Avoid passing non-primitive values that are **coming from other props or hooks**.
 
   - When memoizing props, **remember that `children` is also a non-primitive** value that needs to be memoized.
+
+# Chapter 6 – Deep Dive into Diffing and Reconciliation
+
+- When we create a React element, we are actually creating a JavaScript object. JSX is just syntactic sugar for the `React.createElement()` function. This function returns a description object with a `type` property that points to either:
+
+  - a component,
+  - a memoized component, or
+  - a string representing an HTML tag.
+
+- If the reference to that object changes between re-renders, and the `type` remains the same (and isn't memoized with `React.memo`), React will re-render the element.
+
+- React transforms our code into DOM elements. For example, a React `input` becomes a standard HTML input element in the DOM. If only an attribute like `placeholder` changes, React updates just that attribute instead of re-creating the whole element. This is for performance optimization.
+
+- This transformation is done by manipulating the **Virtual DOM** — a large JavaScript object that represents the entire component tree with all their props and children.
+
+- DOM elements in the Virtual DOM tree have their `type` set as strings (e.g., `"div"`, `"input"`), which tells React to create corresponding HTML elements. Components have their `type` set to their function definition, allowing React to execute the function and traverse the tree it returns.
+
+- On initial render (mount), React:
+
+  1. Iterates over the tree.
+  2. For elements with string `type`, generates DOM nodes.
+  3. For elements with function `type`, calls the function and recursively processes its return value.
+  4. Finally, appends the generated elements to the document using JavaScript's `appendChild()`.
+
+- During re-renders, React starts traversing the tree from the point of update. It compares the old and new `type` values:
+
+  - If the `type` is the same, the component is marked for update.
+  - If the `type` has changed, React unmounts the old component and mounts the new one.
+
+- Defining components inside other components is considered an anti-pattern. In JavaScript, functions are compared by reference. So defining a child component inside a parent function means the reference changes on every render, causing React to unmount and remount that component each time. This is inefficient and can introduce bugs.
+
+- When conditionally rendering the same component (where only attributes change), React doesn't unmount and remount it. It simply re-renders it with the updated props. For example, an input element with a changed `placeholder` will maintain its current value; only the attribute will be updated.
+
+- To force re-mounting instead of re-rendering, we can use arrays and keys.
+
+- When React encounters an array of children, it compares each item between renders. Each item is treated as distinct, allowing React to match components correctly across renders.
+
+- The `key` attribute serves as a unique identifier for React to track elements in dynamic arrays. It ensures consistent identification of components even when their order or presence changes (e.g., reorder, add, or remove operations).
+
+- Key does not improve performance directly; it is used by React solely for identification between renders.
+
+- To prevent unnecessary re-renders, use `React.memo` to memoize components.
+
+- For static arrays that don’t change their order, using the index as a key is acceptable. For dynamic arrays that might be reordered, use a unique value such as an ID as the key.
+
+- Changing the key on an uncontrolled component causes a state reset. This is a useful technique to reset a component’s state to its initial value.
+
+- If two elements share the same key and one is unmounted while the other is mounted, the newly mounted element may inherit the state of the unmounted one. This happens even if the elements are otherwise different.
+
+- React only enforces the use of keys in dynamic arrays. In static arrays, there is no risk of elements being rearranged, so keys are optional.
+
+- When mixing dynamic and static elements, React wraps the dynamic ones into a single array, and that array becomes a single child within the parent’s children array.
+
+---
+
+## Key Takeaways
+
+- React will compare elements between re-renders with elements in the same place in the returned array on any level of hierarchy. The first one with the first one, the second with the second, etc.
+- If the type of the element and its position in the array is the same, React will re-render that element. If the type changes at that position, then React will unmount the previous component and mount the new one.
+- An array of children will always have the same number of children (if it's not dynamic). Conditional elements (`isSomething ? <A /> : <B />`) will take just one place, even if one of them is `null`.
+- If the array is dynamic, then React can't reliably identify those elements between re-renders. So we use the `key` attribute to help it. This is important when the array can change the number of its items or their position between re-renders (re-order, add, remove), and especially important if those elements are wrapped in `React.memo`.
+- We can use the key outside of dynamic arrays as well to force React to recognize elements at the same position in the array with the same type as different. Or to force it to recognize elements at different positions with the same type as the same.
+- We can also force unmounting of a component with a key if that key changes between re-renders based on some information (like routing). This is sometimes called "state reset".
