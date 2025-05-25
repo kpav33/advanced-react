@@ -312,3 +312,89 @@
 - If the array is dynamic, then React can't reliably identify those elements between re-renders. So we use the `key` attribute to help it. This is important when the array can change the number of its items or their position between re-renders (re-order, add, remove), and especially important if those elements are wrapped in `React.memo`.
 - We can use the key outside of dynamic arrays as well to force React to recognize elements at the same position in the array with the same type as different. Or to force it to recognize elements at different positions with the same type as the same.
 - We can also force unmounting of a component with a key if that key changes between re-renders based on some information (like routing). This is sometimes called "state reset".
+
+# Chapter 7 - Higher-order components in modern world
+
+- Higher-order components are a pattern for reusing component logic. An HOC is simply a function that accepts a component as one of its arguments, executes some logic, and returns a new component that renders the original one.
+
+```jsx
+// accept a Component as an argument
+const withSomeLogic = (Component) => {
+  // do something
+  // return a component that renders the component from the
+  argument;
+  return (props) => <Component {...props} />;
+};
+
+// just a button
+const Button = ({ onClick }) => <button onClick={onClick}>Button</button>;
+// same button, but with enhanced functionality
+const ButtonWithSomeLogic = withSomeLogic(Button);
+```
+
+- The most common use case for HOCs is to **inject props** into components. Before the introduction of Hooks, HOCs were widely used to access context or manage external data subscriptions (like Redux or Firebase listeners).
+
+- In modern React code, HOCs can still be useful, especially for:
+
+  - Enhancing callbacks
+  - React lifecycle manipulation
+  - Intercepting DOM or keyboard events
+
+```jsx
+const withEscapeKey = (Component) => {
+  return (props) => {
+    useEffect(() => {
+      const handleKeyDown = (e) => {
+        if (e.key === "Escape") {
+          console.log("Escape key pressed");
+        }
+      };
+      window.addEventListener("keydown", handleKeyDown);
+      return () => window.removeEventListener("keydown", handleKeyDown);
+    }, []);
+
+    return <Component {...props} />;
+  };
+};
+
+const withUserData = (Component) => {
+  return (props) => {
+    const [user, setUser] = useState(null);
+
+    useEffect(() => {
+      fetch("/api/user")
+        .then((res) => res.json())
+        .then(setUser);
+    }, []);
+
+    return <Component {...props} user={user} />;
+  };
+};
+```
+
+- Whenever multiple components need to share the same logic, HOCs can be a viable option — especially when using Hooks is not suitable or would add unnecessary complexity.
+
+---
+
+## Key Takeaways
+
+- A higher-order component is just a function that accepts a component as an argument and returns a new component. That new component renders the component from the argument.
+
+- We can inject props or additional logic into the components that are wrapped in a higher-order component.
+
+```jsx
+// accept a Component as an argument
+const withSomeLogic = (Component) => {
+  // inject some logic here
+  // return a component that renders the component from the
+  argument;
+  // inject some prop to it
+  return (props) => {
+    // or inject some logic here
+    // can use React hooks here, it's just a component
+    return <Component {...props} some="data" />;
+  };
+};
+```
+
+- We can pass additional data to the higher-order component, either through the function’s argument or through props.
