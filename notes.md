@@ -398,3 +398,87 @@ const withSomeLogic = (Component) => {
 ```
 
 - We can pass additional data to the higher-order component, either through the function’s argument or through props.
+
+# Chapter 8 – React Context and Performance
+
+- While React Context can **cause unnecessary re-renders**, it can also **prevent some** and improve app performance when used thoughtfully.
+
+- When we want to share state across multiple components, a common pattern is to **lift the state up** to a shared parent and pass it down via props. However, this can lead to **prop drilling**, where intermediate components that don't actually use the data are still re-rendered whenever the state changes—this can hurt performance.
+
+- To avoid prop drilling, we can use **React Context** (or similar state-sharing libraries). Context allows us to **"escape" the component tree** and pass values directly to deeply nested components without threading them through props. Only the components that actually **consume** the context value will re-render when the value changes.
+
+- A common architectural pattern is to create a **Controller** component that manages the logic and wraps children using the `children` prop. Inside this component, we create a React **Context** and render a `Context.Provider`, passing the shared state into the `value` prop. Any components rendered within this tree can access the values using the `useContext` hook.
+
+```jsx
+import React, { createContext, useState } from "react";
+
+export const ThemeContext = createContext();
+
+export const ThemeController = ({ children }) => {
+  const [theme, setTheme] = useState("light");
+
+  const toggleTheme = () =>
+    setTheme((prev) => (prev === "light" ? "dark" : "light"));
+
+  return (
+    <ThemeContext.Provider value={{ theme, toggleTheme }}>
+      {children}
+    </ThemeContext.Provider>
+  );
+};
+```
+
+- However, there are **three major caveats** to keep in mind:
+
+  1. **All consumers will re-render** when the `value` on the `Provider` changes, even if they don’t use the specific part that changed.
+  2. These re-renders **cannot be prevented with memoization** (at least not easily).
+  3. If the **Controller component re-renders** (e.g., due to its parent updating), **all consumer components** will also re-render, even if the context value didn’t change.
+
+- To mitigate this:
+
+  - Use `useMemo` and `useCallback` to **memoize the value passed to the context provider**.
+  - This is one of the few scenarios where **memoizing by default is recommended** rather than considered premature optimization.
+
+- Even if a context consumer is only using part of the context value, **any change to the context will re-render all consumers**.
+
+- To solve this, use the **"splitting providers"** technique—create **separate context providers** for different parts of the state, allowing more granular control over which components re-render.
+
+- Using `useReducer` instead of `useState` can also help. With `useReducer`, components **dispatch actions** rather than directly managing state, which can decouple logic and reduce unnecessary re-renders.
+
+- For advanced scenarios, we can use **context selectors**, a technique that mimics `useMemo`-like optimization. This involves using **higher-order components** (HOCs) that memoize the component passed to them, isolating the re-renders.
+
+```jsx
+// withSelectedContext.js
+import React, { useContext, memo } from "react";
+
+const withSelectedContext = (Context, selector) => (Component) => {
+  const Wrapped = (props) => {
+    const context = useContext(Context);
+    const selected = selector(context);
+    return <Component {...props} selected={selected} />;
+  };
+  return memo(Wrapped);
+};
+
+// usage:
+const SelectedThemeComponent = withSelectedContext(
+  ThemeContext,
+  (ctx) => ctx.theme
+)(MyComponent);
+```
+
+---
+
+## Key Takeaways
+
+- With Context (or any context-like state management library), we can pass data directly from one component to another deep in the render tree without the need to wire it through props.
+
+- Passing data in this way can improve the performance of our apps, as we'll avoid the re-rendering of all components in between.
+
+- Context, however, can be dangerous: all components that use it will re-render if the value in the Context provider changes. This re-render can't be stopped with standard memoization techniques.
+
+- To minimize Context re-renders, we should always memoize the value we pass to the provider.
+
+- We can split the Context provider into multiple providers to further minimize re-renders. Switching from useState to useReducer can help with this.
+
+- Even though we don't have proper selectors for Context, we can imitate their functionality with higher order components and React.memo.
