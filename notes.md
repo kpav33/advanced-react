@@ -482,3 +482,144 @@ const SelectedThemeComponent = withSelectedContext(
 - We can split the Context provider into multiple providers to further minimize re-renders. Switching from useState to useReducer can help with this.
 
 - Even though we don't have proper selectors for Context, we can imitate their functionality with higher order components and React.memo.
+
+# Chapter 9 – Refs: From Storing Data to Imperative API
+
+- Refs are used to access the actual DOM elements in React (which is rare but occasionally necessary).
+- Typical use cases for using native DOM APIs in React include:
+  - Manually focusing an input after it renders
+  - Detecting clicks outside a component (like closing a popup)
+  - Manually scrolling to an element after it appears
+  - Calculating element size and position (e.g., tooltips)
+
+```jsx
+const inputRef = useRef();
+
+useEffect(() => {
+  inputRef.current?.focus();
+}, []);
+
+return <input ref={inputRef} />;
+```
+
+- While you could use `getElementById`, React provides **Refs** as a more React-friendly way to achieve the same.
+- A **Ref** is a **mutable object** that persists between renders.
+  - Since it's not state, updating a ref **doesn't trigger re-renders**.
+  - To reflect updated ref values in the UI, some other state change must cause a re-render.
+- If a **ref value is passed as a prop to a child component**, it behaves like a primitive value. Even if the child re-renders due to its own state change, the ref value remains the same unless the parent re-renders.
+- Ref updates are **synchronous**, unlike state updates, which are batched and asynchronous to allow React to optimize diffs and rendering.
+- **How to decide between state and ref?**
+  - Ask: _Will the value be used for rendering?_ and _Will it be passed as props to other components?_
+  - If the answer to both is **no**, then it’s fine to use a **ref**.
+- A very common use case is assigning DOM elements to refs.
+- A ref is only assigned **after** the element is rendered and its DOM node is created.
+  - Before that, `ref.current` is `null`.
+  - You should only read or write to `ref.current` inside `useEffect` or in callbacks.
+- Refs can be **passed from parent to child**:
+  - Declare `useRef` in the parent.
+  - Assign it to an element in the child.
+  - The parent now has access to that element.
+
+```jsx
+// Parent
+const inputRef = useRef();
+return <Child inputRef={inputRef} />;
+
+// Child
+const Child = ({ inputRef }) => {
+  return <input ref={inputRef} />;
+};
+```
+
+- When **passing refs as props**, avoid naming the prop `ref`. Instead, use something like `inputRef`.
+  - `ref` is a special prop in React (a leftover from class components).
+  - If you really want to use `ref` as the prop name, use `forwardRef`.
+    - `forwardRef` lets you pass a ref to a functional component.
+    - The component receives the ref as the **second argument**, and you pass it to a DOM element inside.
+  - Whether to use a custom prop (like `inputRef`) or `forwardRef` is a matter of preference—they behave the same in the end.
+
+```jsx
+const FancyInput = forwardRef((props, ref) => {
+  return <input ref={ref} {...props} />;
+});
+
+const inputRef = useRef();
+
+<FancyInput ref={inputRef} />;
+```
+
+- React is **declarative**, but sometimes you need **imperative logic**.
+  - For such cases, React provides the `useImperativeHandle` hook.
+    - You decide what public methods the component should expose.
+    - You also need a ref to attach this handle to.
+    - This is useful to expose a custom API, combining state logic and ref values.
+
+```jsx
+const FancyInput = forwardRef((props, ref) => {
+  const inputRef = useRef();
+
+  useImperativeHandle(ref, () => ({
+    focus: () => inputRef.current.focus(),
+  }));
+
+  return <input ref={inputRef} />;
+});
+
+// Parent
+const inputRef = useRef();
+
+<FancyInput ref={inputRef} />;
+inputRef.current.focus(); // Imperatively focus input
+```
+
+- You don’t **have to** use `useImperativeHandle`.
+  - Since a ref is just a mutable object, you can assign any value to it manually in a `useEffect`.
+- Using refs and imperative methods in React is considered an **escape hatch**.
+  - Use them only when necessary.
+  - In 99% of cases, the usual **props and callbacks flow** should suffice.
+
+---
+
+## Key takeaways
+
+- A Ref is just a mutable object that can store any value. That value will be preserved between re-renders.
+- A Ref's update doesn't trigger re-renders and is synchronous.
+- We can assign a Ref to a DOM element via the ref attribute. After that element is rendered, we'll see that element in the ref.current property.
+- We can pass Refs as regular props to any component.
+- If we want to pass it as the actual ref prop, we need to wrap that component in forwardRef . Otherwise, it won't work on functional components. The second argument of that component will be the ref itself, which we then need to pass down to the desired DOM element.
+
+```jsx
+// second argument, next to props, is ref that is injected by
+"forwardRef";
+const InputField = forwardRef((props, ref) => {
+  return <input ref={ref} />;
+});
+```
+
+- We can hide the implementation details of a component and expose its public API with the useImperativeHandle hook. We'll need to pass a Ref to that component, which will be mutated with the API properties:
+
+```jsx
+const InputField = ({ apiRef }) => {
+  useImperativeHandle(
+    apiRef,
+    () => ({
+      focus: () => {},
+      shake: () => {},
+    }),
+    []
+  );
+};
+```
+
+- Or, we can always just mutate that Ref manually in the useEffect hook:
+
+```jsx
+const InputField = ({ apiRef }) => {
+  useEffect(() => {
+    apiRef.current = {
+      focus: () => {},
+      shake: () => {},
+    };
+  }, [apiRef]);
+};
+```
