@@ -732,3 +732,117 @@ const Form = () => {
 - To update that data, we need to re-create the "closed" function. This is what dependencies of hooks like useCallback allow us to do.
 - If we miss a dependency, or don't refresh the closed function assigned to ref.current , the closure becomes "stale".
 - We can escape the "stale closure" trap in React by taking advantage of the fact that Ref is a mutable object. We can mutate ref.current outside of the stale closure, and then access it inside. Will be the latest data.
+
+# Chapter 11 – Implementing Advanced Debouncing and Throttling with Refs
+
+- Refs are commonly used to store various timers or timeout IDs, especially when working with `setInterval`, `setTimeout`, or debounce/throttle mechanisms. For instance, we might debounce `onChange` callbacks in form inputs to prevent excessive re-renders.
+
+```jsx
+const debounce = (callback, wait) => {
+  // initialize the timer
+  let timer;
+
+  // lots of code here involving the actual implementation of timer
+  // to track the time passed since the last callback call
+  const debouncedFunc = () => {
+    // checking whether the waiting time has passed
+    if (shouldCallCallback(Date.now())) {
+      callback();
+    } else {
+      // if time hasn't passed yet, restart the timer
+      timer = startTimer(callback);
+    }
+  };
+
+  return debouncedFunc;
+};
+```
+
+- **Debouncing** and **throttling** are techniques for controlling how often a function is allowed to execute within a given time period:
+  - **Debounce** delays function execution until a specified time has passed **since the last call**.
+  - **Throttle** guarantees the function is called **at most once per interval**, regardless of how often it's triggered.
+- For controlled input elements, `onChange` fires on every keystroke. Using debounce, we can delay expensive operations (like API calls) until the user stops typing.
+- A debounce function typically:
+  - Accepts a callback and a delay interval.
+  - Returns a new function that resets a timer every time it's called.
+  - Only executes the original callback if the timer completes without being reset.
+- Throttle is similar, but instead of resetting the timer, it ensures the callback runs **once per interval**, no matter how often it's called.
+- When using controlled inputs, it's better to **debounce only a portion of logic**, rather than delaying `setState`, to avoid stale or lagging UI values.
+
+```jsx
+const Input = () => {
+  const [value, setValue] = useState("initial");
+
+  // memoize the callback with useCallback
+  // we need it since it's a dependency in useMemo below
+  const sendRequest = useCallback((value: string) => {
+    console.log("Changed value:", value);
+  }, []);
+
+  // memoize the debounce call with useMemo
+  const debouncedSendRequest = useMemo(() => {
+    return debounce(sendRequest, 1000);
+  }, [sendRequest]);
+
+  const onChange = (e) => {
+    const value = e.target.value;
+    setValue(value);
+    debouncedSendRequest(value);
+  };
+
+  return <input onChange={onChange} value={value} />;
+};
+```
+
+- Instead of using `useMemo` or `useCallback` to memoize debounced functions, we can use a `useRef` to persist them across renders.
+  - However, since `ref.current` does not automatically update, you should update it manually using `useEffect` whenever dependencies change.
+  - A challenge here is that **debounced functions get re-created on dependency changes**, so you may need to handle cleanup inside the `useEffect` to cancel any in-progress debounced calls.
+  - This pattern works for debouncing, but **not reliably for throttling**, because throttling relies on consistent interval-based calls, which get interrupted by resets.
+
+```jsx
+const useDebounce = (callback) => {
+  const ref = useRef();
+
+  useEffect(() => {
+    ref.current = callback;
+  }, [callback]);
+
+  const debouncedCallback = useMemo(() => {
+    const func = () => {
+      ref.current?.();
+    };
+    return debounce(func, 1000);
+  }, []);
+
+  return debouncedCallback;
+};
+
+const Input = () => {
+  const [value, setValue] = useState();
+
+  const debouncedRequest = useDebounce(() => {
+    // send request to the backend
+    // access to the latest state here
+    console.log(value);
+  });
+
+  const onChange = (e) => {
+    const value = e.target.value;
+    setValue(value);
+    debouncedRequest();
+  };
+
+  return <input onChange={onChange} value={value} />;
+};
+```
+
+---
+
+## Key takeaways
+
+- We use debounce and throttle when we want to skip some function's executions that were fired too often.
+- In order for those functions to work properly, they should be called only once in a component's life, usually when it's mounted.
+- If we call them in the component's render function directly, the timer inside will be re-created with every re-render, and the functions will not work as expected.
+- To fix this, we can memoize those with `useMemo` or through the usage of Refs.
+- If we simply memoize them or use Refs "naively", we won't have access to the component's latest data, like state or props. This is happening because a closure is created when we initialize Ref, which freezes values at the time it's created.
+- To escape the closure trap, we can leverage the mutable nature of the Ref object and gain access to the latest data by constantly updating the "closed" function in `ref.current` within `useEffect`.
