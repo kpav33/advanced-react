@@ -623,3 +623,112 @@ const InputField = ({ apiRef }) => {
   }, [apiRef]);
 };
 ```
+
+# Chapter 10 – Closures in React
+
+- `React.memo` accepts a comparison function that allows fine-grained control over prop comparisons. By default, React compares previous and next props automatically. When a comparison function is provided, React relies on its return value (`false` to re-render, `true` to skip).
+
+```jsx
+const HeavyComponentMemo = React.memo(HeavyComponent, (before, after) => {
+  return before.title === after.title;
+});
+```
+
+- In JavaScript, declaring a function creates a **local scope**. Variables declared inside are not visible from the outside.
+- A function declared inside another function has its own local scope, but it can also **access variables declared outside** its own scope. This is known as a **closure**.
+- A closure is a function that "closes over" its surrounding variables—capturing a snapshot of the environment (variables and values) at the time it was created.
+- When we pass a value to a function that returns another function (which uses that value), the returned function holds on to that value via closure. As long as the returned function is referenced somewhere, that "snapshot" remains alive.
+- Closures are like taking a picture: once it's taken, it's frozen in time. Any new "pictures" (i.e., new closures) do not alter the previous ones but capture a new scene.
+- In React, we use closures constantly:
+  - Every callback is a closure.
+  - Every hook involves closures.
+  - Every function inside a component is a closure, since components themselves are just functions.
+
+```jsx
+const Component = () => {
+  const [state, setState] = useState();
+
+  const onClick = useCallback(() => {
+    // perfectly fine
+    console.log(state);
+  });
+
+  useEffect(() => {
+    // perfectly fine
+    console.log(state);
+  });
+};
+```
+
+- Closures remain alive as long as the function that formed them is still referenced. This reference can be stored anywhere, including state or refs.
+- A **stale closure** occurs when a function is reused without recreating it, and it references outdated values from its closure. This typically happens when referencing variables from an outer scope that have changed since the closure was created.
+  - To avoid stale closures, we can use separate variables to track previous values and compare them explicitly.
+
+```jsx
+const cache = {};
+let prevValue;
+
+const something = (value) => {
+  // check whether the value has changed
+  if (!cache.current || value !== prevValue) {
+    cache.current = () => {
+      console.log(value);
+    };
+  }
+
+  // refresh it
+  prevValue = value;
+  return cache.current;
+};
+```
+
+- `useCallback` creates a closure. If you access state or props inside it, you must include them in the dependency array.
+  - The dependency array tells React when to refresh the closure. If it's empty, the closure will become stale over time.
+- `useRef` can also lead to stale closures. Since the ref is only initialized once (on mount), its internal function closures won't update automatically.
+  - To update the value inside a ref, you need to do it manually, often inside `useEffect`, based on other state or props.
+- One way to **escape closure traps** is by using refs:
+  - Create a ref and store a function or value in `ref.current`.
+  - Ensure that the function stored in `ref.current` is updated on every render (e.g., using `useEffect` without a dependency array).
+  - Be cautious when passing `ref.current` to memoized components—it will always appear as a new value on each render, breaking memoization.
+  - Instead, you can create a stable function using `useCallback` (with no dependencies) and have it call the up-to-date value inside `ref.current`.
+
+```jsx
+const Form = () => {
+  const [value, setValue] = useState();
+
+  const ref = useRef();
+  useEffect(() => {
+    ref.current = () => {
+      // will be latest
+      console.log(value);
+    };
+  });
+
+  const onClick = useCallback(() => {
+    // will be latest
+    ref.current?.();
+  }, []);
+
+  return (
+    <>
+      <input
+        type="text"
+        value={value}
+        onChange={(e) => setValue(e.target.value)}
+      />
+      <HeavyComponentMemo title="Welcome closures" onClick={onClick} />
+    </>
+  );
+};
+```
+
+---
+
+## Key takeaways
+
+- Closures are formed every time a function is created inside another function.
+- Since React components are just functions, every function created inside forms a closure, including such hooks as useCallback and useRef.
+- When a function that forms a closure is called, all the data around it is "frozen", like a snapshot.
+- To update that data, we need to re-create the "closed" function. This is what dependencies of hooks like useCallback allow us to do.
+- If we miss a dependency, or don't refresh the closed function assigned to ref.current , the closure becomes "stale".
+- We can escape the "stale closure" trap in React by taking advantage of the fact that Ref is a mutable object. We can mutate ref.current outside of the stale closure, and then access it inside. Will be the latest data.
