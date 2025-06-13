@@ -846,3 +846,104 @@ const Input = () => {
 - To fix this, we can memoize those with `useMemo` or through the usage of Refs.
 - If we simply memoize them or use Refs "naively", we won't have access to the component's latest data, like state or props. This is happening because a closure is created when we initialize Ref, which freezes values at the time it's created.
 - To escape the closure trap, we can leverage the mutable nature of the Ref object and gain access to the latest data by constantly updating the "closed" function in `ref.current` within `useEffect`.
+
+# Chapter 12 – Escaping Flickering UI with `useLayoutEffect`
+
+- Suppose we want to build a navigation component that dynamically adjusts the number of visible links based on the container’s width. To achieve this, we need **accurate measurements** of the container and each link item, which we can obtain using the native `getBoundingClientRect` API.
+
+- To measure the sizes, we use **refs** to access DOM elements and read their dimensions inside a `useEffect`. We then iterate over the items, calculate their total width, and compare it to the container’s width. Based on that, we calculate a **state value** that determines how many items to render.
+
+- The problem with this approach is that it can cause **visible flickers**. This happens because React renders the items and makes them visible before the unnecessary ones are removed. A workaround is to initially **hide** the items (e.g., `opacity: 0`) and only show them once dimensions have been measured and the correct items have been rendered.
+
+```jsx
+const Component = ({ items }) => {
+  // set the initial value to -1, to indicate that we haven't run the calculations yet
+  const [lastVisibleMenuItem, setLastVisibleMenuItem] = useState(-1);
+
+  useEffect(() => {
+    const itemIndex = getLastVisibleItem(ref.current);
+    // update state with the actual number
+    setLastVisibleMenuItem(itemIndex);
+  }, [ref]);
+
+  // render everything if it's the first pass and the value is still the default
+  if (lastVisibleMenuItem === -1) {
+    // render all of them here, same as before
+    return "...";
+  }
+
+  // show "more" button if the last visible item is not the last one in the array
+  const isMoreVisible = lastVisibleMenuItem < items.length - 1;
+  // filter out those items which index is more than the last visible
+  const filteredItems = items.filter(
+    (item, index) => index <= lastVisibleMenuItem
+  );
+
+  return (
+    <div className="navigation">
+      {/*render only visible items*/}
+      {filteredItems.map((item) => (
+        <a href={item.href}>{item.name}</a>
+      ))}
+
+      {/*render "more" conditionally*/}
+      {isMoreVisible && <button id="more">...</button>}
+    </div>
+  );
+};
+```
+
+- A more robust solution is to use `useLayoutEffect` instead of `useEffect`. The logic remains the same, but `useLayoutEffect` runs **synchronously after all DOM mutations and before the browser repaints**. This prevents the flicker by ensuring that the DOM is fully prepared before the user sees it.
+
+- However, use `useLayoutEffect` **only when necessary**, because it can **negatively impact performance**. Unlike `useEffect`, it blocks painting until it finishes executing, which can delay rendering if the logic inside is heavy.
+
+- In React, browser rendering is referred to as **painting** to distinguish it from React’s own rendering process. The browser doesn’t continuously repaint the screen—it works in frames, similar to a slideshow, aiming for **60 frames per second (FPS)**, or about **16ms per frame**. (The original text said 13ms, but the typical target is ~16.67ms.)
+
+- The browser schedules tasks in a queue and attempts to complete as many as possible within this 16ms window before the next paint.
+
+- Any synchronous JavaScript code (like that in a `<script>` tag) is considered a **task**. If a task takes longer than 16ms, the browser **won’t interrupt it**—it waits for it to finish before painting.
+
+- React avoids long, blocking tasks by **splitting rendering into smaller chunks**, using asynchronous mechanisms like callbacks, event handlers, and `setTimeout`. For example, wrapping logic in `setTimeout` defers it as a separate task that the browser can handle efficiently.
+
+- This task-splitting is part of React’s **concurrent rendering engine**, which tries to keep task durations under 16ms for smoother UI performance.
+
+- `useLayoutEffect` behaves differently—it is executed **synchronously during React updates** as part of the same task. Even if state is updated (which normally causes an async render), React keeps it **synchronous** when `useLayoutEffect` is involved.
+
+- This synchronous behavior is why `useLayoutEffect` can **prevent flickering**, but it may **hinder performance** since React cannot break the work into smaller tasks.
+
+- When working with frameworks like **Next.js** or any other **server-side rendering (SSR)** solutions, `useLayoutEffect` can cause issues. During SSR, React components are rendered on the server using something like `React.renderToString(<App />)` to generate HTML that is sent to the client.
+
+- This initial render on the server means **browser-only APIs** (like `getBoundingClientRect`) won’t be available, causing errors if accessed during the SSR phase.
+
+- To prevent this, we can show a **default UI** on the server and wait to render the actual UI until the client mounts. This can be done using a `shouldRender` state variable that flips to `true` inside a `useEffect`—since `useEffect` only runs on the client, the real layout-sensitive content is deferred until after the browser loads.
+
+```jsx
+const Component = () => {
+  const [shouldRender, setShouldRender] = useState(false);
+  useEffect(() => {
+    setShouldRender(true);
+  }, []);
+  if (!shouldRender) return <SomeNavigationSubstitude />;
+  return <Navigation />;
+};
+```
+
+- Simply checking for the existence of the `window` object is not sufficient, because the initial render on the client must **match the HTML** sent from the server for hydration to succeed.
+
+```jsx
+const Component = () => {
+  // Detecting SSR by checking whether window is there
+  if (typeof window === undefined) return <SomeNavigationSubstitude />;
+  return <Navigation />;
+};
+```
+
+---
+
+## Key Takeaways
+
+- When we calculate the dimensions of elements inside the `useEffect` hook and then hide them or adjust their size, we might see the visual "glitch".
+- This is happening because normally `useEffect` is run asynchronously. Asynchronous code is a separate task from the browser's perspective. So it has a chance to paint the state "before" and "after" the change, resulting in the glitch.
+- We can prevent this behavior with the `useLayoutEffect` hook. This hook is run synchronously. From the browser's perspective, it will be one large, unbreakable task. So the browser will wait and will not paint anything until the task is complete and the final dimensions are calculated.
+- In the SSR environment, useLayoutEffect will not work since React doesn't run `useLayoutEffect` in SSR mode, and the "glitch" will be visible again.
+- This can be fixed by opting out of SSR for this specific feature.
