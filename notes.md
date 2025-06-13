@@ -947,3 +947,74 @@ const Component = () => {
 - We can prevent this behavior with the `useLayoutEffect` hook. This hook is run synchronously. From the browser's perspective, it will be one large, unbreakable task. So the browser will wait and will not paint anything until the task is complete and the final dimensions are calculated.
 - In the SSR environment, useLayoutEffect will not work since React doesn't run `useLayoutEffect` in SSR mode, and the "glitch" will be visible again.
 - This can be fixed by opting out of SSR for this specific feature.
+
+# Chapter 13 – React Portals and Why We Need Them
+
+- When implementing something like a **modal dialog**, we typically want the content to **escape the normal document flow**. This is usually done using the CSS `position` property, set to either `absolute` or `fixed`.
+
+- Elements with `position: absolute` are removed from the normal document layout. They must be manually positioned and are placed **relative to the nearest positioned ancestor**—that is, the closest parent element with a `position` value other than `static`.
+
+- This relative positioning can cause issues if there are intermediate elements with a position set, especially **higher up in the component tree**, as it affects the modal's placement.
+
+- `absolute` positioning works well when the element should be **relative to its source**, such as in tooltips or dropdowns.
+
+- Another source of issues is the **stacking context**, which adds a third dimension (the z-axis) to layout. Normally, DOM elements stack in order of appearance, but positioned elements (`absolute`, `relative`, etc.) move forward in the stack. To control this manually, we use the **`z-index`** property.
+
+- `z-index` only works within the **same stacking context**. If a new context is created (through `transform`, certain `position` + `z-index`, `overflow`, etc.), it acts like a **bubble**, isolating the element's stacking behavior from the rest of the DOM.
+
+- Using `position: fixed` positions the element relative to the **viewport**—not to any ancestor. However, even fixed elements are subject to **stacking context rules**. If an ancestor has properties that create a new **containing block**, the fixed element may be positioned relative to that instead of the viewport. For example, a parent with `transform` will break this behavior.
+
+- To avoid these layout and stacking issues, it’s often best to render elements **outside of problematic containers**. In React, we can do this using **Portals**.
+
+- Portals are created with the `createPortal` function from `react-dom`. It takes **two arguments**:
+
+  1. What to render – e.g., `<Modal />`
+  2. Where to render it – e.g., `document.getElementById("modal-root")`
+
+  ```jsx
+  import { createPortal } from "react-dom";
+
+  const App = () => {
+    return (
+      <>
+        ... // the rest of the code with the button
+        {isVisible &&
+          createPortal(<ModalDialog />, document.getElementById("root"))}
+      </>
+    );
+  };
+  ```
+
+- In React, this is called **teleportation**, and the rules are:
+
+  - **What happens in React stays in React.**
+  - **What happens outside React is governed by the DOM.**
+
+- From React's perspective:
+
+  - The portal content is part of the parent component’s **render tree**.
+  - The modal will **re-render** with the parent.
+  - It **inherits context**.
+  - It **unmounts** when the parent unmounts.
+  - Events like `onClick` still **bubble up to the parent** in React’s synthetic event system.
+
+- From the **DOM's perspective**:
+  - The portal element is **outside the main app’s DOM structure**.
+  - **CSS inheritance** and **cascading styles** might not apply as expected.
+  - **Native event propagation** (like `submit`) will not behave normally.
+  - For example, a `button` in a portal won’t trigger a parent form’s `onSubmit`, because form submission is handled **natively**, not by React.
+
+---
+
+## Key Takeaways
+
+- `position: absolute` positions an element relative to a positioned parent.
+- `position: fixed` positions an element relative to the viewport unless a new Containing Block is formed.
+- `position: absolute` elements will be clipped inside the `overflow: hidden` elements.
+- `position: fixed` elements can escape the `overflow: hidden` problem, but they can't escape the Stacking Context.
+- Nothing can escape the Stacking Context. If you are trapped there, it's game over.
+- Stacking Context is formed by setting `position` and `z-index`, by setting `translate`, and so many other things.
+- Portals allow you to easily render some elements, like modal dialogs, outside of their current DOM position so that the Stacking Context doesn't trap them.
+- When using Portals, the rules are:
+  - What happens in React stays within the React hierarchy.
+  - What happens outside of React follows DOM structure rules.
