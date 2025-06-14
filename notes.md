@@ -1018,3 +1018,126 @@ const Component = () => {
 - When using Portals, the rules are:
   - What happens in React stays within the React hierarchy.
   - What happens outside of React follows DOM structure rules.
+
+# Chapter 14 – Data Fetching on the Client and Performance
+
+- Data fetching generally falls into two categories: **initial data fetching** (performed right away, using SSR or `useEffect`), and **on-demand fetching** (triggered by user interaction, typically through callbacks).
+
+- For simple cases, using `useEffect` with the native `fetch` API is sufficient. However, for more complex scenarios—where you need features like **caching**, **error handling**, or **race condition protection**—it’s better to use a dedicated data-fetching library.
+
+- A **performant application** is one that feels fast to the user. When dealing with **asynchronous operations** like data fetching, performance becomes nuanced. Depending on the use case, it might be better to:
+
+  - Show a **loading indicator** until all data is ready.
+  - **Incrementally render** parts of the UI as data becomes available.
+
+- Consider the following when planning your data-fetching strategy:
+
+  - **When** should fetching begin?
+  - **What** can be displayed while data is loading?
+  - **How** should the UI respond once fetching is complete?
+
+- Understanding **when components mount and update** in the React lifecycle is key to knowing when and how to trigger data fetching.
+
+- **Browser limitations** also play a role. For example, in HTTP/1.1, Chrome allows only **6 concurrent requests per domain**. Any additional requests are queued until one completes.
+
+- If you’re not using an external library, it’s a good idea to build a **custom hook** for fetching. This prevents repetition and centralizes your logic.
+
+- A common performance pitfall is the **request waterfall**. This occurs when one component waits for its data before triggering the next fetch. This sequential approach delays rendering and increases overall load time.
+
+- To prevent waterfalls, **move fetch logic higher in the component tree** and trigger all requests in **parallel** using `Promise.all`. Simply lifting fetch calls without `Promise.all` won’t improve performance if the requests are still sequential.
+
+```jsx
+useEffect(async () => {
+  const [sidebar, issue, comments] = await Promise.all([
+    fetch("/get-sidebar"),
+    fetch("/get-issue"),
+    fetch("/get-comments"),
+  ]);
+}, []);
+```
+
+- Alternatively, you can use **parallel Promises** instead of `async/await`. Each fetch runs independently, and data is handled inside `.then()` callbacks. This approach triggers multiple renders—one for each resolved request—instead of a single batch render.
+
+```jsx
+fetch("/get-sidebar")
+  .then((data) => data.json())
+  .then((data) => setSidebar(data));
+fetch("/get-issue")
+  .then((data) => data.json())
+  .then((data) => setIssue(data));
+fetch("/get-comments")
+  .then((data) => data.json())
+  .then((data) => setComments(data));
+```
+
+- While **lifting data up** can help with performance, it often harms app **architecture** and **readability**. A better approach is to use **data providers** (like React Context), which centralize data fetching while making the data accessible throughout the app.
+
+```jsx
+const Context = React.createContext();
+
+export const CommentsDataProvider = ({ children }) => {
+  const [comments, setComments] = useState();
+
+  useEffect(async () => {
+    fetch("/get-comments")
+      .then((data) => data.json())
+      .then((data) => setComments(data));
+  }, []);
+
+  return <Context.Provider value={comments}>{children}</Context.Provider>;
+};
+export const useComments = () => useContext(Context);
+```
+
+- In some cases, you may consider moving data fetching **outside of React entirely**—triggering requests even before the app initializes. This can be useful for **critical resource pre-fetching** at the router level or inside **lazy-loaded components**. However, this method is harder to control and still subject to browser concurrency limits.
+
+```jsx
+// This will be fired as soon as JavaScript is loaded on the page
+// Data will sit idly until something resolves it
+const commentsPromise = fetch("/get-comments");
+
+const Comments = () => {
+  useEffect(() => {
+    const dataFetch = async () => {
+      // just await the variable here
+      const data = await (await commentsPromise).json();
+      setState(data);
+    };
+    dataFetch();
+  }, [url]);
+};
+```
+
+- All the above strategies apply even if you're using external data-fetching libraries. The **underlying principles**—like avoiding waterfalls and understanding the React lifecycle—remain the same.
+
+- **Suspense** does not change how data is fetched. It simply provides a different mechanism for showing fallback UI during data loading. Limitations like browser request caps and the nature of async rendering still apply.
+
+```jsx
+const Comments = ({ commments }) => {
+  if (!comments) return "loading";
+  // render comments
+};
+
+const Issue = () => {
+  return (
+    <>
+      {/*issue data*/}
+      <Suspense fallback="loading">
+        <Comments />
+      </Suspense>
+    </>
+  );
+};
+```
+
+---
+
+## Key Takeaways
+
+- We can separate the client's data fetching into two broad categories: initial and on demand.
+- We can use the simple `fetch` instead of using data fetching libraries, but a lot of concerns we'd have to implement manually.
+- A "performant" app is always subjective and depends on the message we're trying to convey to the users.
+- When fetching data, especially initially, we need to be aware of browser limitations on parallel requests.
+- Waterfalls appear when we trigger data fetching not in parallel, but conditionally or in sequence.
+- We can use techniques such as `Promise.all` , parallel promises, or data providers with Context to avoid waterfalls.
+- We can pre-fetch critical resources even before React is initialized, but we need to remember browser limitations while doing so.
