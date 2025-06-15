@@ -1141,3 +1141,127 @@ const Issue = () => {
 - Waterfalls appear when we trigger data fetching not in parallel, but conditionally or in sequence.
 - We can use techniques such as `Promise.all` , parallel promises, or data providers with Context to avoid waterfalls.
 - We can pre-fetch critical resources even before React is initialized, but we need to remember browser limitations while doing so.
+
+# Chapter 15 – Data Fetching and Race Conditions
+
+- JavaScript executes code **synchronously**, step by step. **Promises** allow us to execute tasks **asynchronously**—we can trigger an operation and continue executing other code while waiting for the task to complete.
+
+```jsx
+console.log("first step"); // will log FIRST
+
+fetch("/some-url") // create promise here
+  .then(() => {
+    // wait for Promise to be done
+    // log stuff after the promise is done
+    console.log("second step"); // will log THIRD (if successful)
+  })
+  .catch(() => {
+    console.log("something bad happened"); // will log THIRD (if error happens)
+  });
+
+console.log("third step"); // will log SECOND
+```
+
+- Promises are most commonly used for **data fetching**. While the promise is pending, the application can continue to respond and perform other actions.
+
+- Consider a component that includes a fetch call and has two tabs. Clicking a tab updates state, which triggers a **re-render** and starts a new fetch request. If you quickly click between tabs, multiple fetch calls are fired. When these resolve **out of order**, stale data might get displayed, causing a confusing and unreliable user experience. This is a classic **race condition**.
+
+- One solution is to **split the content into separate components**, each tied to a specific tab. Only the active component is mounted; the rest are unmounted. When a component unmounts, any associated promises are also discarded, **avoiding race conditions** altogether.
+
+```jsx
+const App = () => {
+  const [page, setPage] = useState("issue");
+
+  return (
+    <>
+      {page === "issue" && <Issue />}
+      {page === "about" && <About />}
+    </>
+  );
+};
+```
+
+- React used to warn about this with the message: _"Can't perform a React state update on an unmounted component."_ That warning has since been removed, but the underlying issue still needs to be handled properly.
+
+- Instead of forcing component re-mounts, a softer approach is to **ignore outdated results**. This can be done by storing an **identifier in a ref** and checking it when the Promise resolves. If the identifier has changed, we know the result is stale and can safely discard it.
+
+```jsx
+const Page = ({ id }) => {
+  // create ref
+  const ref = useRef(id);
+
+  useEffect(() => {
+    // update ref value with the latest url
+    ref.current = url;
+
+    fetch(`/some-data-url/${id}`).then((result) => {
+      // compare the latest url with the result's url
+      // only update state if the result actually belongs to that url
+      if (result.url === ref.current) {
+        result.json().then((r) => {
+          setData(r);
+        });
+      }
+    });
+  }, [url]);
+};
+```
+
+- Another method is to use the **cleanup function inside `useEffect`**. It runs either when the component unmounts or before the effect re-runs due to changed dependencies. Within this cleanup, we can flag older requests so their results are dropped if they try to update state after they've become irrelevant.
+
+```jsx
+// normal useEffect
+useEffect(() => {
+  // "cleanup" function - function that is returned in useEffect
+  return () => {
+    // clean something up here
+  };
+  // dependency - useEffect will be triggered every time url has
+  changed;
+}, [url]);
+```
+
+- A more robust approach is to **cancel the request entirely**. This is possible using the `AbortController` interface. When a new request is initiated, the previous one is canceled. This prevents any outdated fetch calls from completing and updating the state.
+
+```jsx
+useEffect(() => {
+  // create controller here
+  const controller = new AbortController();
+
+  // pass controller as signal to fetch
+  fetch(url, { signal: controller.signal })
+    .then((r) => r.json())
+    .then((r) => {
+      setData(r);
+    });
+  return () => {
+    // abort the request here
+    controller.abort();
+  };
+}, [url]);
+```
+
+- It’s important to remember that **`async/await` only changes syntax**, making asynchronous code look synchronous. It does not eliminate the asynchronous nature of Promises. All race condition solutions still apply.
+
+---
+
+## Key Takeaways
+
+- A race condition can happen when we update state multiple times after a promise is resolved in the same React component.
+
+```jsx
+useEffect(() => {
+  fetch(url)
+    .then((r) => r.json())
+    .then((r) => {
+      // this is vulnerable to the race conditions
+      setData(r);
+    });
+}, [url]);
+```
+
+- We can fix it by:
+  - Forcing a re-mount of a component with the "old" data that we don't need.
+  - Comparing the returned result with the variable that triggered the promise and not setting state if they don't match.
+  - Tracing the latest promise via the clean-up function in the `useEffect` and dropping the result of all "old" promises.
+  - Using `AbortController` to cancel all previous requests.
