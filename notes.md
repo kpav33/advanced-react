@@ -1265,3 +1265,156 @@ useEffect(() => {
   - Comparing the returned result with the variable that triggered the promise and not setting state if they don't match.
   - Tracing the latest promise via the clean-up function in the `useEffect` and dropping the result of all "old" promises.
   - Using `AbortController` to cancel all previous requests.
+
+# Chapter 16 – Universal Error Handling in React
+
+- It's important to handle errors in React because, starting with React 16, any uncaught error during the component lifecycle will cause the **entire app to unmount**. Prior to React 16, broken components were simply skipped or left as-is, but now they can take down the whole application.
+
+- Even small errors—whether from your own code or from third-party libraries—can crash the entire app if not caught properly.
+
+- You can handle errors using **`try/catch` blocks** or by attaching a `.catch()` method to **Promise-based APIs**.
+
+- A common approach is to use a **state variable to track errors** and show a fallback UI when an error is detected.
+
+```jsx
+const SomeComponent = () => {
+  const [hasError, setHasError] = useState(false);
+
+  useEffect(() => {
+    try {
+      // do something like fetching some data
+    } catch (e) {
+      // oh no! the fetch failed, we have no data to render!
+      setHasError(true);
+    }
+  });
+  // something happened during fetch, lets render some nice error
+  screen;
+
+  if (hasError) return <SomeErrorScreen />;
+
+  // all's good, data is here, let's render it
+  return <SomeComponentContent {...datasomething} />;
+};
+```
+
+- Limitations of `try/catch`:
+
+  - `try/catch` does not work with `useEffect` directly, because `useEffect` runs asynchronously. From the perspective of `try/catch`, everything executes fine—even if an error is thrown inside the effect. Instead, wrap logic inside the `useEffect` body with `try/catch`.
+
+  ```jsx
+  try {
+    useEffect(() => {
+      throw new Error("Hulk smash!");
+    }, []);
+  } catch (e) {
+    // useEffect throws, but this will never be called
+  }
+
+  useEffect(() => {
+    try {
+      throw new Error("Hulk smash!");
+    } catch (e) {
+      // this one will be caught
+    }
+  }, []);
+  ```
+
+  - `try/catch` cannot catch errors thrown in child components. When you write `<Child />`, you’re not rendering the component yet—you’re describing what React should render later. By the time the child is rendered, the `try/catch` block has already exited.
+  - You can't rely on setting a state value to track the error if you're outside of a `useEffect` or callback, because this could cause an infinite render loop. In these cases, you'd need to directly return an error screen, which is less elegant and harder to maintain.
+
+  ```jsx
+  const Component = () => {
+    const [hasError, setHasError] = useState(false);
+
+    try {
+      doSomethingComplicated();
+    } catch (e) {
+      // don't do that! will cause infinite loop in case of an error
+      // see codesandbox below with live example
+      setHasError(true);
+    }
+  };
+
+  const Component = () => {
+    try {
+      doSomethingComplicated();
+    } catch (e) {
+      // this allowed
+      return <SomeErrorScreen />;
+    }
+  };
+  ```
+
+- Relying only on `try/catch` can result in missed errors and more fragile code.
+
+- To handle errors more reliably, React provides a special component called an **Error Boundary**. It acts like a `try/catch` for components and catches errors that occur during rendering, lifecycle methods, and constructors of child components.
+
+- You implement this by defining the `getDerivedStateFromError` method and rendering a fallback UI when an error occurs.
+
+```jsx
+class ErrorBoundary extends React.Component {
+  constructor(props) {
+    super(props);
+    // initialize the error state
+    this.state = { hasError: false };
+  }
+
+  // if an error happened, set the state to true
+  static getDerivedStateFromError(error) {
+    return { hasError: true };
+  }
+
+  componentDidCatch(error, errorInfo) {
+    // send error to somewhere here
+    log(error, errorInfo);
+  }
+
+  render() {
+    // if error happened, return a fallback component
+    if (this.state.hasError) {
+      return <>Oh no! Epic fail!</>;
+    }
+    return this.props.children;
+  }
+}
+```
+
+- Error Boundaries only catch errors that happen during the React lifecycle. Errors in things like `setTimeout`, Promises, or event handlers are outside of React's scope and need to be handled manually with `try/catch`.
+
+- In those asynchronous cases, it's safe to use state to track the error and render fallback UI accordingly.
+
+- There's a trick to allow async errors to be caught by Error Boundaries. You can catch the error with `try/catch`, then trigger a re-render and re-throw the error during that render, which allows the Error Boundary to catch it.
+
+- You can implement this approach manually using a hook like `useAsyncError`, or use a library like `react-error-boundary`, which follows this pattern for you.
+
+```jsx
+const useThrowAsyncError = () => {
+  const [state, setState] = useState();
+  return (error) => {
+    setState(() => throw error);
+  };
+};
+
+const Component = () => {
+  const throwAsyncError = useThrowAsyncError();
+  useEffect(() => {
+    fetch("/bla")
+      .then()
+      .catch((e) => {
+        // throw async error here!
+        throwAsyncError(e);
+      });
+  });
+};
+```
+
+---
+
+## Key Takeaways
+
+- Uncaught errors in the React lifecycle after version 16 will unmount the entire app. So at least a few ErrorBoundaries in strategic places are non-negotiable.
+- A simple `try/catch` will catch errors in callbacks or in promises just fine, but it won't be able to catch errors that are coming from any nested components, and you won't be able to wrap `useEffect` or the return of the component in `try/catch`.
+- The ErrorBoundary component is the opposite. It will catch errors originated in any component down the render tree, but it will skip promises and callbacks (anything async).
+- We can merge them together and create an uber ErrorBoundary component if we catch the `async` errors with `try/catch` and re-throw them into the normal React lifecycle.
+- We can either implement a simple `useAsyncError` hook for that or just use the `react-error-boundary` library, which operates on similar principles.
